@@ -1,0 +1,1103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>GitHub PR Agent</title>
+  <style>
+    /* ── Reset & Base ─────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #0d1117;
+      --surface:   #161b22;
+      --surface2:  #21262d;
+      --border:    #30363d;
+      --accent:    #238636;
+      --accent-h:  #2ea043;
+      --blue:      #1f6feb;
+      --blue-h:    #388bfd;
+      --text:      #e6edf3;
+      --muted:     #8b949e;
+      --success:   #3fb950;
+      --warning:   #d29922;
+      --error:     #f85149;
+      --info:      #58a6ff;
+      --radius:    10px;
+      --font:      'Segoe UI', system-ui, -apple-system, sans-serif;
+      --mono:      'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--font);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 32px 16px 64px;
+    }
+
+    /* ── Header ───────────────────────────────────────────────── */
+    header {
+      text-align: center;
+      margin-bottom: 36px;
+    }
+    header .logo {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      margin-bottom: 8px;
+    }
+    header .logo svg { width: 36px; height: 36px; fill: var(--text); }
+    header h1 {
+      font-size: 2rem;
+      font-weight: 700;
+      letter-spacing: -0.5px;
+    }
+    header p {
+      color: var(--muted);
+      font-size: 0.95rem;
+      margin-top: 6px;
+    }
+
+    /* ── Card ─────────────────────────────────────────────────── */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 28px 32px;
+      width: 100%;
+      max-width: 780px;
+    }
+    .card + .card { margin-top: 20px; }
+
+    /* ── Form ─────────────────────────────────────────────────── */
+    .form-title {
+      font-size: 1rem;
+      font-weight: 600;
+      margin-bottom: 20px;
+      color: var(--text);
+    }
+
+    .field { margin-bottom: 18px; }
+    label {
+      display: block;
+      font-size: 0.82rem;
+      font-weight: 600;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 6px;
+    }
+    input[type="text"], input[type="number"], select {
+      width: 100%;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text);
+      font-family: var(--font);
+      font-size: 0.95rem;
+      padding: 10px 14px;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    input[type="text"]:focus, input[type="number"]:focus, select:focus {
+      border-color: var(--blue);
+    }
+    input::placeholder { color: var(--muted); }
+
+    /* Mode toggle */
+    .mode-toggle {
+      display: flex;
+      gap: 0;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      overflow: hidden;
+      margin-bottom: 20px;
+    }
+    .mode-toggle button {
+      flex: 1;
+      padding: 10px 0;
+      background: transparent;
+      border: none;
+      color: var(--muted);
+      font-family: var(--font);
+      font-size: 0.9rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background 0.15s, color 0.15s;
+    }
+    .mode-toggle button.active {
+      background: var(--blue);
+      color: #fff;
+    }
+    .mode-toggle button:hover:not(.active) {
+      background: var(--border);
+      color: var(--text);
+    }
+
+    /* Row layout for repo + max */
+    .row { display: flex; gap: 16px; }
+    .row .field { flex: 1; }
+
+    /* Submit button */
+    #analyzeBtn, .action-btn {
+      width: 100%;
+      padding: 12px;
+      background: var(--accent);
+      border: none;
+      border-radius: 8px;
+      color: #fff;
+      font-family: var(--font);
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s, opacity 0.15s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      margin-top: 4px;
+    }
+    #analyzeBtn:hover:not(:disabled), .action-btn:hover:not(:disabled) { background: var(--accent-h); }
+    #analyzeBtn:disabled, .action-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    .toolbar {
+      margin-left: auto;
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    /* Spinner */
+    .spinner {
+      width: 18px; height: 18px;
+      border: 2px solid rgba(255,255,255,0.3);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      display: none;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Progress Steps ───────────────────────────────────────── */
+    #progressSection { display: none; }
+
+    .steps-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 20px;
+      position: relative;
+    }
+    .steps-bar::before {
+      content: '';
+      position: absolute;
+      top: 18px;
+      left: 18px;
+      right: 18px;
+      height: 2px;
+      background: var(--border);
+      z-index: 0;
+    }
+    .step-dot {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+      z-index: 1;
+    }
+    .step-dot .dot {
+      width: 36px; height: 36px;
+      border-radius: 50%;
+      background: var(--surface2);
+      border: 2px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.8rem;
+      font-weight: 700;
+      color: var(--muted);
+      transition: all 0.3s;
+    }
+    .step-dot .dot-label {
+      font-size: 0.7rem;
+      color: var(--muted);
+      text-align: center;
+      max-width: 70px;
+      line-height: 1.3;
+    }
+    .step-dot.active .dot {
+      border-color: var(--blue);
+      color: var(--blue);
+      background: rgba(31,111,235,0.1);
+      box-shadow: 0 0 0 4px rgba(31,111,235,0.15);
+    }
+    .step-dot.done .dot {
+      border-color: var(--success);
+      background: var(--success);
+      color: #fff;
+    }
+    .step-dot.done .dot-label { color: var(--success); }
+
+    /* Live log */
+    #logBox {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 14px 16px;
+      font-family: var(--mono);
+      font-size: 0.82rem;
+      max-height: 220px;
+      overflow-y: auto;
+      line-height: 1.7;
+    }
+    .log-line { display: flex; gap: 8px; align-items: flex-start; }
+    .log-line .tag {
+      font-size: 0.7rem;
+      font-weight: 700;
+      padding: 1px 6px;
+      border-radius: 4px;
+      flex-shrink: 0;
+      margin-top: 2px;
+    }
+    .tag-success { background: rgba(63,185,80,0.15); color: var(--success); }
+    .tag-info    { background: rgba(88,166,255,0.15); color: var(--info); }
+    .tag-warning { background: rgba(210,153,34,0.15); color: var(--warning); }
+    .tag-error   { background: rgba(248,81,73,0.15);  color: var(--error); }
+    .tag-step    { background: rgba(31,111,235,0.15); color: var(--blue-h); }
+
+    /* ── PR Meta card ─────────────────────────────────────────── */
+    #prMetaSection { display: none; }
+    .meta-grid {
+      display: flex;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+    .meta-chip {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 5px 14px;
+      font-size: 0.82rem;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .meta-chip .chip-label { color: var(--muted); }
+    .meta-chip .chip-value { color: var(--text); font-weight: 600; }
+    .badge-open   { background: rgba(63,185,80,0.15); color: var(--success); border-color: rgba(63,185,80,0.3); }
+    .badge-closed { background: rgba(248,81,73,0.15); color: var(--error);   border-color: rgba(248,81,73,0.3); }
+    .badge-merged { background: rgba(163,113,247,0.15); color: #a371f7;      border-color: rgba(163,113,247,0.3); }
+
+    /* ── Similar PRs list ─────────────────────────────────────── */
+    #similarSection { display: none; }
+    .section-title {
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 12px;
+    }
+    .pr-list { display: flex; flex-direction: column; gap: 8px; }
+    .pr-item {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px 14px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 0.88rem;
+    }
+    .pr-item .pr-num {
+      color: var(--blue-h);
+      font-weight: 700;
+      flex-shrink: 0;
+    }
+    .pr-item .pr-title-text {
+      color: var(--text);
+      flex: 1;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .pr-item a {
+      color: var(--muted);
+      font-size: 0.78rem;
+      text-decoration: none;
+      flex-shrink: 0;
+    }
+    .pr-item a:hover { color: var(--blue-h); }
+
+    /* ── AI Summary Report ────────────────────────────────────── */
+    #resultSection { display: none; }
+
+    .result-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 20px;
+      padding-bottom: 16px;
+      border-bottom: 1px solid var(--border);
+    }
+    .result-header .icon {
+      width: 40px; height: 40px;
+      background: rgba(35,134,54,0.15);
+      border: 1px solid rgba(35,134,54,0.3);
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.2rem;
+      flex-shrink: 0;
+    }
+    .result-header h2 {
+      font-size: 1.05rem;
+      font-weight: 700;
+    }
+    .result-header p {
+      font-size: 0.82rem;
+      color: var(--muted);
+      margin-top: 2px;
+    }
+
+    /* Markdown-rendered summary */
+    #summaryContent {
+      line-height: 1.75;
+      font-size: 0.93rem;
+      color: var(--text);
+    }
+    #summaryContent h1,
+    #summaryContent h2,
+    #summaryContent h3 {
+      color: var(--text);
+      margin: 20px 0 8px;
+      font-size: 1rem;
+    }
+    #summaryContent h1 { font-size: 1.1rem; }
+    #summaryContent strong { color: var(--info); }
+    #summaryContent ul, #summaryContent ol {
+      padding-left: 20px;
+      margin: 8px 0;
+    }
+    #summaryContent li { margin: 4px 0; }
+    #summaryContent p  { margin: 8px 0; }
+    #summaryContent code {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 1px 6px;
+      font-family: var(--mono);
+      font-size: 0.85em;
+      color: var(--warning);
+    }
+    #summaryContent blockquote {
+      border-left: 3px solid var(--blue);
+      padding-left: 12px;
+      color: var(--muted);
+      margin: 8px 0;
+    }
+    #summaryContent hr {
+      border: none;
+      border-top: 1px solid var(--border);
+      margin: 16px 0;
+    }
+
+    /* Analyzed PRs footer */
+    .analyzed-footer {
+      margin-top: 24px;
+      padding-top: 16px;
+      border-top: 1px solid var(--border);
+    }
+    .analyzed-footer .section-title { margin-bottom: 10px; }
+    .analyzed-footer .pr-links {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .analyzed-footer .pr-link-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.85rem;
+    }
+    .analyzed-footer .pr-link-row .num { color: var(--blue-h); font-weight: 600; }
+    .analyzed-footer .pr-link-row .title { color: var(--muted); flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .analyzed-footer .pr-link-row a { color: var(--blue-h); text-decoration: none; font-size: 0.78rem; }
+    .analyzed-footer .pr-link-row a:hover { text-decoration: underline; }
+
+    /* Copy button */
+    .copy-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 14px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--muted);
+      font-family: var(--font);
+      font-size: 0.82rem;
+      cursor: pointer;
+      transition: all 0.15s;
+      float: right;
+      margin-top: -4px;
+    }
+    .copy-btn:hover { border-color: var(--blue); color: var(--blue-h); }
+
+    /* ── Error banner ─────────────────────────────────────────── */
+    #errorBanner {
+      display: none;
+      background: rgba(248,81,73,0.1);
+      border: 1px solid rgba(248,81,73,0.3);
+      border-radius: 8px;
+      padding: 14px 18px;
+      color: var(--error);
+      font-size: 0.9rem;
+      margin-top: 16px;
+    }
+
+    /* ── Scrollbar ────────────────────────────────────────────── */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: var(--muted); }
+
+    /* ── Responsive ───────────────────────────────────────────── */
+    @media (max-width: 600px) {
+      .card { padding: 20px 16px; }
+      .row  { flex-direction: column; gap: 0; }
+      .steps-bar::before { display: none; }
+      .step-dot .dot-label { display: none; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ── Header ──────────────────────────────────────────────── -->
+  <header>
+    <div class="logo">
+      <!-- GitHub Octocat icon -->
+      <svg viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
+        <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38
+                 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13
+                 -.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66
+                 .07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15
+                 -.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27
+                 .68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12
+                 .51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48
+                 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/>
+      </svg>
+      <h1>GitHub PR Agent</h1>
+    </div>
+    <p>Find similar PRs · Collect reviewer feedback · Get AI-powered insights</p>
+  </header>
+
+  <!-- ── Input Form ───────────────────────────────────────────── -->
+  <div class="card">
+    <div class="form-title">Analysis Workspace</div>
+
+    <div class="mode-toggle">
+      <button id="tabAnalyze" class="active" onclick="setAppMode('analyze')">PR Analysis</button>
+      <button id="tabHistory" onclick="setAppMode('history')">Feature History</button>
+      <button id="tabInsights" onclick="setAppMode('insights')">Review Insights</button>
+    </div>
+
+    <div id="panelAnalyze">
+      <div class="mode-toggle">
+        <button id="btnModePR" class="active" onclick="setMode('pr')">🔢 PR Number</button>
+        <button id="btnModeFeature" onclick="setMode('feature')">💬 Feature Description</button>
+      </div>
+
+      <div class="field">
+        <label id="valueLabel">PR Number</label>
+        <input type="number" id="valueInput" placeholder="e.g. 12345" min="1" />
+      </div>
+
+      <div class="row">
+        <div class="field">
+          <label>Repository</label>
+          <input type="text" id="repoInput" placeholder="owner/repo" value="microsoft/vscode" />
+        </div>
+        <div class="field" style="max-width:130px">
+          <label>Max Similar PRs</label>
+          <input type="number" id="maxInput" value="5" min="1" max="20" />
+        </div>
+      </div>
+
+      <button id="analyzeBtn" onclick="startAnalysis()">
+        <span id="btnText">Analyze</span>
+        <div class="spinner" id="btnSpinner"></div>
+      </button>
+    </div>
+
+    <div id="panelHistory" style="display:none;">
+      <div class="field">
+        <label>Feature Query</label>
+        <input type="text" id="historyQuery" placeholder="e.g. authentication, dark mode, search panel" />
+      </div>
+      <div class="row">
+        <div class="field">
+          <label>Repository</label>
+          <input type="text" id="historyRepo" value="microsoft/vscode" />
+        </div>
+        <div class="field">
+          <label>Month</label>
+          <select id="historyMonth">
+            <option value="">Any</option>
+            <option value="1">January</option>
+            <option value="2">February</option>
+            <option value="3">March</option>
+            <option value="4">April</option>
+            <option value="5">May</option>
+            <option value="6">June</option>
+            <option value="7">July</option>
+            <option value="8">August</option>
+            <option value="9">September</option>
+            <option value="10">October</option>
+            <option value="11">November</option>
+            <option value="12">December</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Year</label>
+          <input type="number" id="historyYear" placeholder="2025" min="2008" max="2100" />
+        </div>
+      </div>
+      <button class="action-btn" onclick="loadFeatureHistory()">Show Feature History</button>
+    </div>
+
+    <div id="panelInsights" style="display:none;">
+      <div class="row">
+        <div class="field">
+          <label>Repository</label>
+          <input type="text" id="insightsRepo" value="microsoft/vscode" />
+        </div>
+        <div class="field">
+          <label>Window</label>
+          <select id="insightsWindow">
+            <option value="all">All</option>
+            <option value="month">Recent Month</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Limit</label>
+          <input type="number" id="insightsLimit" value="10" min="1" max="20" />
+        </div>
+      </div>
+      <button class="action-btn" onclick="loadReviewInsights()">Show Review Insights</button>
+    </div>
+
+    <div id="errorBanner"></div>
+  </div>
+
+  <!-- ── Progress Section ─────────────────────────────────────── -->
+  <div class="card" id="progressSection">
+    <!-- Step dots -->
+    <div class="steps-bar">
+      <div class="step-dot" id="dot1">
+        <div class="dot">1</div>
+        <div class="dot-label">Fetch PR</div>
+      </div>
+      <div class="step-dot" id="dot2">
+        <div class="dot">2</div>
+        <div class="dot-label">Find Similar</div>
+      </div>
+      <div class="step-dot" id="dot3">
+        <div class="dot">3</div>
+        <div class="dot-label">Collect Feedback</div>
+      </div>
+      <div class="step-dot" id="dot4">
+        <div class="dot">4</div>
+        <div class="dot-label">AI Summary</div>
+      </div>
+      <div class="step-dot" id="dot5">
+        <div class="dot">5</div>
+        <div class="dot-label">Report</div>
+      </div>
+    </div>
+
+    <!-- Live log -->
+    <div id="logBox"></div>
+  </div>
+
+  <!-- ── PR Meta ──────────────────────────────────────────────── -->
+  <div class="card" id="prMetaSection">
+    <div class="section-title">PR Details</div>
+    <div class="meta-grid" id="metaGrid"></div>
+  </div>
+
+  <!-- ── Similar PRs ─────────────────────────────────────────── -->
+  <div class="card" id="similarSection">
+    <div class="section-title">Similar PRs Found</div>
+    <div class="pr-list" id="prList"></div>
+  </div>
+
+  <!-- ── AI Summary Result ────────────────────────────────────── -->
+  <div class="card" id="resultSection">
+    <div class="result-header">
+      <div class="icon">🤖</div>
+      <div>
+        <h2>AI Summary Report</h2>
+        <p id="resultContext"></p>
+      </div>
+      <div class="toolbar">
+        <button class="copy-btn" onclick="copySummary()">📋 Copy</button>
+        <button class="copy-btn" onclick="exportMarkdown()">⬇ Markdown</button>
+        <button class="copy-btn" onclick="exportJson()">⬇ JSON</button>
+        <button class="copy-btn" onclick="window.print()">🖨 Print</button>
+      </div>
+    </div>
+
+    <div id="summaryContent"></div>
+
+    <div class="analyzed-footer">
+      <div class="section-title">PRs Analyzed</div>
+      <div class="pr-links" id="analyzedLinks"></div>
+    </div>
+  </div>
+
+  <!-- ── Scripts ──────────────────────────────────────────────── -->
+  <script>
+    // ── State ──────────────────────────────────────────────────
+    let appMode = 'analyze';
+    let currentMode = 'pr';
+    let currentEventSource = null;
+    let rawSummaryText = '';
+    let lastReportData = null;
+
+    function setAppMode(mode) {
+      appMode = mode;
+      ['analyze', 'history', 'insights'].forEach(name => {
+        document.getElementById('tab' + name.charAt(0).toUpperCase() + name.slice(1)).classList.toggle('active', name === mode);
+        document.getElementById('panel' + name.charAt(0).toUpperCase() + name.slice(1)).style.display = name === mode ? 'block' : 'none';
+      });
+      resetUI();
+    }
+
+    // ── Mode toggle ────────────────────────────────────────────
+    function setMode(mode) {
+      currentMode = mode;
+      const isPR = mode === 'pr';
+      document.getElementById('btnModePR').classList.toggle('active', isPR);
+      document.getElementById('btnModeFeature').classList.toggle('active', !isPR);
+      document.getElementById('valueLabel').textContent = isPR ? 'PR Number' : 'Feature Description';
+      const inp = document.getElementById('valueInput');
+      inp.type = isPR ? 'number' : 'text';
+      inp.placeholder = isPR ? 'e.g. 12345' : 'e.g. add dark mode toggle for settings panel';
+      inp.value = '';
+    }
+
+    // ── Reset UI ───────────────────────────────────────────────
+    function resetUI() {
+      // Hide all result sections
+      ['progressSection','prMetaSection','similarSection','resultSection'].forEach(id => {
+        document.getElementById(id).style.display = 'none';
+      });
+      // Clear log
+      document.getElementById('logBox').innerHTML = '';
+      // Reset step dots
+      for (let i = 1; i <= 5; i++) {
+        const dot = document.getElementById('dot' + i);
+        dot.classList.remove('active', 'done');
+      }
+      // Clear result areas
+      document.getElementById('metaGrid').innerHTML = '';
+      document.getElementById('prList').innerHTML = '';
+      document.getElementById('summaryContent').innerHTML = '';
+      document.getElementById('analyzedLinks').innerHTML = '';
+      document.getElementById('errorBanner').style.display = 'none';
+      rawSummaryText = '';
+      lastReportData = null;
+    }
+
+    // ── Set step state ─────────────────────────────────────────
+    function setStep(n, state) {
+      // state: 'active' | 'done'
+      const dot = document.getElementById('dot' + n);
+      dot.classList.remove('active', 'done');
+      if (state) dot.classList.add(state);
+    }
+
+    // ── Append log line ────────────────────────────────────────
+    function appendLog(level, message) {
+      const box = document.getElementById('logBox');
+      const line = document.createElement('div');
+      line.className = 'log-line';
+
+      const tagMap = {
+        success: ['tag-success', 'OK'],
+        info:    ['tag-info',    'INFO'],
+        warning: ['tag-warning', 'WARN'],
+        error:   ['tag-error',   'ERR'],
+        step:    ['tag-step',    'STEP'],
+      };
+      const [cls, label] = tagMap[level] || ['tag-info', 'INFO'];
+
+      line.innerHTML = `<span class="tag ${cls}">${label}</span><span>${escHtml(message)}</span>`;
+      box.appendChild(line);
+      box.scrollTop = box.scrollHeight;
+    }
+
+    // ── Escape HTML ────────────────────────────────────────────
+    function escHtml(s) {
+      return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    }
+
+    // ── Simple Markdown → HTML renderer ───────────────────────
+    function renderMarkdown(md) {
+      let html = md
+        // Headings
+        .replace(/^### (.+)$/gm, '<h3>$1</h3>')
+        .replace(/^## (.+)$/gm,  '<h2>$1</h2>')
+        .replace(/^# (.+)$/gm,   '<h1>$1</h1>')
+        // Bold + italic
+        .replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>')
+        .replace(/\*\*(.+?)\*\*/g,     '<strong>$1</strong>')
+        .replace(/\*(.+?)\*/g,         '<em>$1</em>')
+        // Inline code
+        .replace(/`([^`]+)`/g, '<code>$1</code>')
+        // Blockquote
+        .replace(/^> (.+)$/gm, '<blockquote>$1</blockquote>')
+        // HR
+        .replace(/^---$/gm, '<hr>')
+        // Unordered list items
+        .replace(/^\s*[-*] (.+)$/gm, '<li>$1</li>')
+        // Ordered list items
+        .replace(/^\s*\d+\. (.+)$/gm, '<li>$1</li>')
+        // Wrap consecutive <li> in <ul>
+        .replace(/(<li>[\s\S]*?<\/li>)(\n<li>[\s\S]*?<\/li>)*/g, m => `<ul>${m}</ul>`)
+        // Paragraphs (double newline)
+        .replace(/\n{2,}/g, '</p><p>')
+        ;
+      return `<p>${html}</p>`;
+    }
+
+    function renderReport(context, summary, items, renderer) {
+      rawSummaryText = summary;
+      lastReportData = { context, summary, items };
+      document.getElementById('resultSection').style.display = 'block';
+      document.getElementById('resultContext').textContent = context;
+      document.getElementById('summaryContent').innerHTML = renderMarkdown(summary);
+
+      const links = document.getElementById('analyzedLinks');
+      links.innerHTML = '';
+      (items || []).forEach(item => {
+        const row = document.createElement('div');
+        row.className = 'pr-link-row';
+        row.innerHTML = renderer(item);
+        links.appendChild(row);
+      });
+
+      setTimeout(() => document.getElementById('resultSection').scrollIntoView({ behavior: 'smooth', block: 'start' }), 100);
+    }
+
+    async function loadFeatureHistory() {
+      const query = document.getElementById('historyQuery').value.trim();
+      const repo = document.getElementById('historyRepo').value.trim();
+      const month = document.getElementById('historyMonth').value;
+      const year = document.getElementById('historyYear').value;
+
+      if (!query) {
+        showError('Please enter a feature query.');
+        return;
+      }
+      if (!repo || !repo.includes('/')) {
+        showError('Please enter a valid repository in owner/repo format.');
+        return;
+      }
+
+      resetUI();
+      document.getElementById('progressSection').style.display = 'block';
+      appendLog('step', 'Loading feature history...');
+
+      const params = new URLSearchParams({ query, repo, max: 20 });
+      if (month) params.append('month', month);
+      if (year) params.append('year', year);
+
+      const res = await fetch(`/api/feature-history?${params}`);
+      const data = await res.json();
+      if (!res.ok) {
+        showError(data.error || 'Failed to load feature history.');
+        return;
+      }
+
+      appendLog(data.items.length ? 'success' : 'warning', data.items.length
+        ? `Found ${data.items.length} matching PRs`
+        : 'No matching PRs found for that query and time range. Showing summary anyway.');
+      document.getElementById('similarSection').style.display = 'block';
+      const list = document.getElementById('prList');
+      list.innerHTML = '';
+      if (data.items.length === 0) {
+        const item = document.createElement('div');
+        item.className = 'pr-item';
+        item.innerHTML = `
+          <span class="pr-title-text">No PRs matched this feature query for the selected filters.</span>
+        `;
+        list.appendChild(item);
+      }
+      data.items.forEach(pr => {
+        const item = document.createElement('div');
+        item.className = 'pr-item';
+        item.innerHTML = `
+          <span class="pr-num">#${pr.number}</span>
+          <span class="pr-title-text">${escHtml(pr.title)}</span>
+          <a href="${pr.url}" target="_blank" rel="noopener">↗ Open</a>
+        `;
+        list.appendChild(item);
+      });
+
+      renderReport(
+        `Feature history for: ${query}`,
+        data.summary,
+        data.items,
+        (pr) => `
+          <span class="num">${pr.number ? '#' + pr.number : 'INFO'}</span>
+          <span class="title">${escHtml(pr.title || 'No matching PR results')}</span>
+          ${pr.url ? `<a href="${pr.url}" target="_blank" rel="noopener">↗ View PR</a>` : ''}
+        `
+      );
+      appendLog('success', 'Feature history loaded successfully.');
+    }
+
+    async function loadReviewInsights() {
+      const repo = document.getElementById('insightsRepo').value.trim();
+      const windowValue = document.getElementById('insightsWindow').value;
+      const limit = document.getElementById('insightsLimit').value;
+
+      if (!repo || !repo.includes('/')) {
+        showError('Please enter a valid repository in owner/repo format.');
+        return;
+      }
+
+      resetUI();
+      document.getElementById('progressSection').style.display = 'block';
+      appendLog('step', 'Loading review insights...');
+
+      const params = new URLSearchParams({ repo, window: windowValue, limit });
+      const res = await fetch(`/api/review-insights?${params}`);
+      const data = await res.json();
+      if (!res.ok) {
+        showError(data.error || 'Failed to load review insights.');
+        return;
+      }
+
+      appendLog('success', `Loaded ${data.most_reviewed_prs.length} reviewed PRs and ${data.frequent_features.length} frequent features`);
+      document.getElementById('similarSection').style.display = 'block';
+      const list = document.getElementById('prList');
+      list.innerHTML = '';
+      data.most_reviewed_prs.forEach(pr => {
+        const item = document.createElement('div');
+        item.className = 'pr-item';
+        item.innerHTML = `
+          <span class="pr-num">#${pr.number}</span>
+          <span class="pr-title-text">${escHtml(pr.title)} · feedback ${pr.review_count}</span>
+          <a href="${pr.url}" target="_blank" rel="noopener">↗ Open</a>
+        `;
+        list.appendChild(item);
+      });
+
+      const combined = [...data.most_reviewed_prs, ...data.frequent_features];
+      renderReport(
+        `Historical review insights for: ${repo}`,
+        data.summary,
+        combined,
+        (item) => item.feature
+          ? `<span class="num">FILE</span><span class="title">${escHtml(item.feature)} · reviewed ${item.review_frequency} times</span>`
+          : `<span class="num">#${item.number}</span><span class="title">${escHtml(item.title)}</span><a href="${item.url}" target="_blank" rel="noopener">↗ View PR</a>`
+      );
+      appendLog('success', 'Review insights loaded successfully.');
+    }
+
+    // ── Start analysis ─────────────────────────────────────────
+    function startAnalysis() {
+      const value = document.getElementById('valueInput').value.trim();
+      const repo  = document.getElementById('repoInput').value.trim();
+      const max   = document.getElementById('maxInput').value.trim();
+
+      // Validate
+      if (!value) {
+        showError(currentMode === 'pr' ? 'Please enter a PR number.' : 'Please enter a feature description.');
+        return;
+      }
+      if (!repo || !repo.includes('/')) {
+        showError('Please enter a valid repository in owner/repo format.');
+        return;
+      }
+
+      // Close any existing stream
+      if (currentEventSource) { currentEventSource.close(); currentEventSource = null; }
+
+      resetUI();
+      setLoading(true);
+
+      // Show progress section
+      document.getElementById('progressSection').style.display = 'block';
+
+      // Build URL
+      const params = new URLSearchParams({ mode: currentMode, value, repo, max });
+      const url = `/api/analyze?${params}`;
+
+      const es = new EventSource(url);
+      currentEventSource = es;
+
+      es.onmessage = (e) => {
+        const data = JSON.parse(e.data);
+        handleEvent(data);
+      };
+
+      es.onerror = () => {
+        appendLog('error', 'Connection lost or server error.');
+        setLoading(false);
+        es.close();
+      };
+    }
+
+    // ── Handle SSE events ──────────────────────────────────────
+    function handleEvent(data) {
+      switch (data.type) {
+
+        case 'step': {
+          // Mark previous step done
+          if (data.step > 1) setStep(data.step - 1, 'done');
+          setStep(data.step, 'active');
+          appendLog('step', `Step ${data.step}: ${data.message}`);
+          break;
+        }
+
+        case 'log': {
+          appendLog(data.level, data.message);
+          break;
+        }
+
+        case 'pr_meta': {
+          document.getElementById('prMetaSection').style.display = 'block';
+          const grid = document.getElementById('metaGrid');
+          const stateClass = data.state === 'open' ? 'badge-open' : data.state === 'closed' ? 'badge-closed' : 'badge-merged';
+          grid.innerHTML = `
+            <div class="meta-chip">
+              <span class="chip-label">PR</span>
+              <span class="chip-value">#${data.number}</span>
+            </div>
+            <div class="meta-chip ${stateClass}">
+              <span class="chip-value">${data.state.toUpperCase()}</span>
+            </div>
+            <div class="meta-chip">
+              <span class="chip-label">Author</span>
+              <span class="chip-value">@${data.author}</span>
+            </div>
+            <div class="meta-chip" style="flex:1;min-width:200px">
+              <span class="chip-label">Title</span>
+              <span class="chip-value" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(data.title)}</span>
+            </div>
+          `;
+          break;
+        }
+
+        case 'similar_prs': {
+          document.getElementById('similarSection').style.display = 'block';
+          const list = document.getElementById('prList');
+          list.innerHTML = '';
+          data.prs.forEach(pr => {
+            const item = document.createElement('div');
+            item.className = 'pr-item';
+            item.innerHTML = `
+              <span class="pr-num">#${pr.number}</span>
+              <span class="pr-title-text">${escHtml(pr.title)}</span>
+              <a href="${pr.url}" target="_blank" rel="noopener">↗ Open</a>
+            `;
+            list.appendChild(item);
+          });
+          break;
+        }
+
+        case 'result': {
+          // Mark step 4 done, step 5 active then done
+          setStep(4, 'done');
+          setStep(5, 'done');
+
+          renderReport(
+            `Reviewer expectations for: ${data.context}`,
+            data.summary,
+            data.analyzed_prs,
+            (pr) => `
+              <span class="num">#${pr.pr_number}</span>
+              <span class="title">${escHtml(pr.pr_title)}</span>
+              <a href="${pr.pr_url}" target="_blank" rel="noopener">↗ View PR</a>
+            `
+          );
+          break;
+        }
+
+        case 'error': {
+          showError(data.message);
+          setLoading(false);
+          if (currentEventSource) { currentEventSource.close(); currentEventSource = null; }
+          break;
+        }
+
+        case 'done': {
+          appendLog('success', 'Analysis complete!');
+          setLoading(false);
+          if (currentEventSource) { currentEventSource.close(); currentEventSource = null; }
+          break;
+        }
+      }
+    }
+
+    // ── Show error ─────────────────────────────────────────────
+    function showError(msg) {
+      const banner = document.getElementById('errorBanner');
+      banner.textContent = '⚠ ' + msg;
+      banner.style.display = 'block';
+      appendLog('error', msg);
+    }
+
+    // ── Loading state ──────────────────────────────────────────
+    function setLoading(on) {
+      const btn = document.getElementById('analyzeBtn');
+      const txt = document.getElementById('btnText');
+      const spin = document.getElementById('btnSpinner');
+      btn.disabled = on;
+      txt.textContent = on ? 'Analyzing...' : 'Analyze';
+      spin.style.display = on ? 'block' : 'none';
+    }
+
+    function downloadFile(filename, content, type) {
+      const blob = new Blob([content], { type });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+
+    function exportMarkdown() {
+      if (!lastReportData) return;
+      downloadFile('github-pr-agent-report.md', `# ${lastReportData.context}\n\n${lastReportData.summary}`, 'text/markdown');
+    }
+
+    function exportJson() {
+      if (!lastReportData) return;
+      downloadFile('github-pr-agent-report.json', JSON.stringify(lastReportData, null, 2), 'application/json');
+    }
+
+    // ── Copy summary ───────────────────────────────────────────
+    function copySummary() {
+      if (!rawSummaryText) return;
+      navigator.clipboard.writeText(rawSummaryText).then(() => {
+        const btn = document.querySelector('.copy-btn');
+        btn.textContent = '✅ Copied!';
+        setTimeout(() => btn.innerHTML = '📋 Copy', 2000);
+      });
+    }
+  </script>
+</body>
+</html>

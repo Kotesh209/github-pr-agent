@@ -1,0 +1,6 @@
+﻿requests
+python-dotenv
+qgenie-sdk
+rich
+flask
+waitress

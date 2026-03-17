@@ -1,0 +1,24 @@
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# Never bake secrets into the image
+# .env is loaded at RUNTIME via docker-compose env_file
+.env
+
+# Dev/editor files
+.vscode/
+.idea/
+*.log
+
+# Git
+.git/
+.gitignore

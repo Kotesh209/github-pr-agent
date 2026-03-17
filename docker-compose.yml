@@ -1,0 +1,13 @@
+version: "3.9"
+
+services:
+  pr-agent:
+    build: .
+    container_name: github-pr-agent
+    restart: unless-stopped        # auto-restart on crash or reboot
+    ports:
+      - "5000:5000"                # team accesses via http://<your-ip>:5000
+    env_file:
+      - .env                       # loads GITHUB_TOKEN, QGENIE_API_KEY, MODEL
+    environment:
+      - PYTHONUNBUFFERED=1         # makes logs show in real time
