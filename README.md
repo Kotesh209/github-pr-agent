@@ -45,8 +45,6 @@ github-pr-agent/
 ├── similarity.py
 ├── summarizer.py
 ├── requirements.txt
-├── Dockerfile
-├── docker-compose.yml
 ├── .env.example
 └── static/
     └── index.html
@@ -143,14 +141,12 @@ Query params:
 
 - “What changed for terminal-related features this year?”
 - “Show feature history for authentication in January”
-- “What PRs were reviewed the most in this repo?”
-- “What recurring reviewer expectations exist for similar PRs?”
+
 
 ## Notes
 
 - `.env` should **not** be committed.
 - GitHub API search quality depends on repo data and query specificity.
-- Very narrow feature-history queries may return no matches.
 - “Most visited PRs” is approximated using review/comment activity because GitHub does not expose direct PR view counts in the standard API.
 
 ## Suggested `.gitignore`
@@ -175,6 +171,3 @@ build/
 - Richer report visualizations
 - Better GitHub query fallbacks
 
-## License
-
-Add your preferred license here.
