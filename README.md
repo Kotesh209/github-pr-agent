@@ -71,11 +71,17 @@ Example:
 ```env
 GITHUB_TOKEN=your_github_token
 QGENIE_API_KEY=your_qgenie_api_key
-GITHUB_REPO=microsoft/vscode
-MODEL=anthropic::claude-sonnet-4-6
+GITHUB_REPO= your choice
+MODEL= your choice
 FLASK_DEBUG=false
 ```
+### Availing QGenie API key
+https://qgenie-docs.qualcomm.com/api-keys/page
 
+### For Github token
+ Please visit settings/token on your github account 
+ 
+### 
 ## Running the Project
 
 ### Run web app
